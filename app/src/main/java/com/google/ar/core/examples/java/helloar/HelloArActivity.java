@@ -343,7 +343,7 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
                     session.getAllTrackables(Plane.class), camera.getDisplayOrientedPose(), projmtx);
 
             // Visualize anchors created by touch.
-            float scaleFactor = 1.0f;
+            float scaleFactor = 0.1f;
             for (Anchor anchor : anchors) {
                 if (anchor.getTrackingState() != TrackingState.TRACKING) {
                     continue;
@@ -356,7 +356,7 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
                 if (!movieClipRenderer.isStarted()) {
                     movieClipRenderer.play("animation.mp4", this);
                 }
-                movieClipRenderer.update(anchorMatrix, 0.25f);
+                movieClipRenderer.update(anchorMatrix, scaleFactor);
                 movieClipRenderer.draw(anchor.getPose(), viewmtx, projmtx);
             }
 
