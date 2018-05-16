@@ -16,17 +16,24 @@
 
 package com.google.ar.core.examples.java.helloar;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.MotionEvent;
+import android.view.View;
+import android.widget.ImageView;
 import android.widget.Toast;
 
 import com.google.ar.core.Anchor;
 import com.google.ar.core.ArCoreApk;
+import com.google.ar.core.AugmentedImage;
+import com.google.ar.core.AugmentedImageDatabase;
 import com.google.ar.core.Camera;
+import com.google.ar.core.Config;
 import com.google.ar.core.Frame;
 import com.google.ar.core.HitResult;
 import com.google.ar.core.Plane;
@@ -56,6 +63,7 @@ import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationExceptio
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
@@ -70,6 +78,7 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
 
     // Rendering. The Renderers are created here, and initialized when the GL surface is created.
     private GLSurfaceView surfaceView;
+    private ImageView fitToScanView;
 
     private boolean installRequested;
 
@@ -77,10 +86,9 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
     private final SnackbarHelper messageSnackbarHelper = new SnackbarHelper();
     private DisplayRotationHelper displayRotationHelper;
     private TapHelper tapHelper;
+    private boolean shouldConfigSession = true;
 
     private final BackgroundRenderer backgroundRenderer = new BackgroundRenderer();
-    private final ObjectRenderer virtualObject = new ObjectRenderer();
-    private final ObjectRenderer virtualObjectShadow = new ObjectRenderer();
     private final PlaneRenderer planeRenderer = new PlaneRenderer();
     private final PointCloudRenderer pointCloudRenderer = new PointCloudRenderer();
     private final MovieClipRenderer movieClipRenderer = new MovieClipRenderer();
@@ -96,6 +104,7 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         surfaceView = findViewById(R.id.surfaceview);
+        fitToScanView = findViewById(R.id.fitToScan);
         displayRotationHelper = new DisplayRotationHelper(/*context=*/ this);
 
         // Set up tap listener.
@@ -224,13 +233,6 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
             planeRenderer.createOnGlThread(/*context=*/ this, "models/trigrid.png");
             pointCloudRenderer.createOnGlThread(/*context=*/ this);
 
-            virtualObject.createOnGlThread(/*context=*/ this, "models/andy.obj", "models/andy.png");
-            virtualObject.setMaterialProperties(0.0f, 2.0f, 0.5f, 6.0f);
-
-            virtualObjectShadow.createOnGlThread(
-                    /*context=*/ this, "models/andy_shadow.obj", "models/andy_shadow.png");
-            virtualObjectShadow.setBlendMode(BlendMode.Shadow);
-            virtualObjectShadow.setMaterialProperties(1.0f, 0.0f, 0.0f, 1.0f);
             movieClipRenderer.createOnGlThread();
 
         } catch (IOException e) {
@@ -251,6 +253,22 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
 
         if (session == null) {
             return;
+        }
+
+        if (shouldConfigSession) {
+            //setup session
+            Bitmap augImage = null;
+            try {
+                augImage = BitmapFactory.decodeStream(getAssets().open("default.jpg"));
+                AugmentedImageDatabase augmentedImageDatabase = new AugmentedImageDatabase(session);
+                augmentedImageDatabase.addImage("image_default", augImage);
+                Config config = new Config(session);
+                config.setAugmentedImageDatabase(augmentedImageDatabase);
+                session.configure(config);
+                shouldConfigSession = false;
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
         // Notify ARCore session that the view size changed so that the perspective matrix and
         // the video background can be properly adjusted.
@@ -360,9 +378,25 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
                 movieClipRenderer.draw(anchor.getPose(), viewmtx, projmtx);
             }
 
+            autoGenClip(frame, projmtx, viewmtx);
+
         } catch (Throwable t) {
             // Avoid crashing the application due to unhandled exceptions.
             Log.e(TAG, "Exception on the OpenGL thread", t);
+        }
+    }
+
+    private void autoGenClip(Frame frame, float[] projmtx, float[] viewmtx) {
+        Collection<AugmentedImage> updatedAugmentedImages = frame.getUpdatedTrackables(AugmentedImage.class);
+
+        for (AugmentedImage augmentedImage : updatedAugmentedImages) {
+            switch (augmentedImage.getTrackingState()) {
+                case TRACKING:
+                    this.runOnUiThread(() -> {
+                        Toast.makeText(this, "detected image", Toast.LENGTH_SHORT).show();
+                        fitToScanView.setVisibility(View.GONE);
+                    });
+            }
         }
     }
 }
