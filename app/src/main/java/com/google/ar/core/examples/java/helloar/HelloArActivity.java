@@ -40,6 +40,7 @@ import com.google.ar.core.Plane;
 import com.google.ar.core.Point;
 import com.google.ar.core.Point.OrientationMode;
 import com.google.ar.core.PointCloud;
+import com.google.ar.core.Pose;
 import com.google.ar.core.Session;
 import com.google.ar.core.Trackable;
 import com.google.ar.core.TrackingState;
@@ -61,6 +62,7 @@ import com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException;
 import com.google.ar.core.exceptions.UnavailableSdkTooOldException;
 import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationException;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -361,7 +363,6 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
                     session.getAllTrackables(Plane.class), camera.getDisplayOrientedPose(), projmtx);
 
             // Visualize anchors created by touch.
-            float scaleFactor = 0.1f;
             for (Anchor anchor : anchors) {
                 if (anchor.getTrackingState() != TrackingState.TRACKING) {
                     continue;
@@ -374,7 +375,8 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
                 if (!movieClipRenderer.isStarted()) {
                     movieClipRenderer.play("animation.mp4", this);
                 }
-                movieClipRenderer.update(anchorMatrix, scaleFactor);
+                float scaleFactor = 0.1f;
+                movieClipRenderer.update(anchorMatrix, scaleFactor, anchor.getPose());
                 movieClipRenderer.draw(anchor.getPose(), viewmtx, projmtx);
             }
 
@@ -386,6 +388,8 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
         }
     }
 
+    boolean isCreated = false;
+
     private void autoGenClip(Frame frame, float[] projmtx, float[] viewmtx) {
         Collection<AugmentedImage> updatedAugmentedImages = frame.getUpdatedTrackables(AugmentedImage.class);
 
@@ -396,6 +400,12 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
                         Toast.makeText(this, "detected image", Toast.LENGTH_SHORT).show();
                         fitToScanView.setVisibility(View.GONE);
                     });
+                    if (!isCreated) {
+                        Anchor centerAnchor = augmentedImage.createAnchor(augmentedImage.getCenterPose());
+                        centerAnchor.getPose().toMatrix(anchorMatrix, 0);
+                        anchors.add(centerAnchor);
+                        isCreated = true;
+                    }
             }
         }
     }

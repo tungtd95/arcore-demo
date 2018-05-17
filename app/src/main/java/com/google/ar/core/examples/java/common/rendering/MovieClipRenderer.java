@@ -5,6 +5,7 @@ import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.graphics.SurfaceTexture;
 import android.media.MediaPlayer;
+import android.media.PlaybackParams;
 import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
 import android.opengl.Matrix;
@@ -110,9 +111,11 @@ public class MovieClipRenderer implements
     /**
      * Update the model matrix based on the location and scale to draw the quad.
      */
-    public void update(float[] modelMatrix, float scaleFactor) {
+    public void update(float[] modelMatrix, float scaleFactor, Pose pose) {
         float[] scaleMatrix = new float[16];
         Matrix.setIdentityM(scaleMatrix, 0);
+        Matrix.setRotateM(modelMatrix, 0, 0, 0, 0, 1f);
+        Matrix.translateM(modelMatrix, 0, pose.tx(), pose.ty(), pose.tz());
         scaleMatrix[0] = scaleFactor;
         scaleMatrix[5] = scaleFactor;
         scaleMatrix[10] = scaleFactor;
