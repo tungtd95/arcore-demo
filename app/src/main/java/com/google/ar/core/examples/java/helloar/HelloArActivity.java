@@ -23,6 +23,7 @@ import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.util.Pair;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.ImageView;
@@ -66,6 +67,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
@@ -87,12 +90,9 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
     private Session session;
     private final SnackbarHelper messageSnackbarHelper = new SnackbarHelper();
     private DisplayRotationHelper displayRotationHelper;
-    private TapHelper tapHelper;
     private boolean shouldConfigSession = true;
 
     private final BackgroundRenderer backgroundRenderer = new BackgroundRenderer();
-    private final PlaneRenderer planeRenderer = new PlaneRenderer();
-    private final PointCloudRenderer pointCloudRenderer = new PointCloudRenderer();
     private final MovieClipRenderer movieClipRenderer = new MovieClipRenderer();
 
     // Temporary matrix allocated here to reduce number of allocations for each frame.
@@ -101,6 +101,8 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
     // Anchors created from taps used for object placing.
     private final ArrayList<Anchor> anchors = new ArrayList<>();
 
+    private final Map<String, Pair<Anchor, AugmentedImage>> anchorMap = new HashMap<>();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -108,10 +110,6 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
         surfaceView = findViewById(R.id.surfaceview);
         fitToScanView = findViewById(R.id.fitToScan);
         displayRotationHelper = new DisplayRotationHelper(/*context=*/ this);
-
-        // Set up tap listener.
-        tapHelper = new TapHelper(/*context=*/ this);
-        surfaceView.setOnTouchListener(tapHelper);
 
         // Set up renderer.
         surfaceView.setPreserveEGLContextOnPause(true);
@@ -188,8 +186,6 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
 
         surfaceView.onResume();
         displayRotationHelper.onResume();
-
-        messageSnackbarHelper.showMessage(this, "Searching for surfaces...");
     }
 
     @Override
@@ -232,9 +228,6 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
         try {
             // Create the texture and pass it to ARCore session to be filled during update().
             backgroundRenderer.createOnGlThread(/*context=*/ this);
-            planeRenderer.createOnGlThread(/*context=*/ this, "models/trigrid.png");
-            pointCloudRenderer.createOnGlThread(/*context=*/ this);
-
             movieClipRenderer.createOnGlThread();
 
         } catch (IOException e) {
@@ -259,11 +252,17 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
 
         if (shouldConfigSession) {
             //setup session
-            Bitmap augImage = null;
+            Bitmap avenger = null;
+            Bitmap avenger2 = null;
+            Bitmap avenger3 = null;
             try {
-                augImage = BitmapFactory.decodeStream(getAssets().open("default.jpg"));
+                avenger = BitmapFactory.decodeStream(getAssets().open("avenger.jpg"));
+                avenger2 = BitmapFactory.decodeStream(getAssets().open("avenger_2.jpg"));
+                avenger3 = BitmapFactory.decodeStream(getAssets().open("avenger_3.jpg"));
                 AugmentedImageDatabase augmentedImageDatabase = new AugmentedImageDatabase(session);
-                augmentedImageDatabase.addImage("image_default", augImage);
+                augmentedImageDatabase.addImage("avenger", avenger);
+                augmentedImageDatabase.addImage("avenger_2", avenger2);
+                augmentedImageDatabase.addImage("avenger_3", avenger3);
                 Config config = new Config(session);
                 config.setAugmentedImageDatabase(augmentedImageDatabase);
                 session.configure(config);
@@ -284,37 +283,6 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
             // camera framerate.
             Frame frame = session.update();
             Camera camera = frame.getCamera();
-
-            // Handle taps. Handling only one tap per frame, as taps are usually low frequency
-            // compared to frame rate.
-            MotionEvent tap = tapHelper.poll();
-            if (tap != null && camera.getTrackingState() == TrackingState.TRACKING) {
-                for (HitResult hit : frame.hitTest(tap)) {
-                    // Check if any plane was hit, and if it was hit inside the plane polygon
-                    Trackable trackable = hit.getTrackable();
-                    // Creates an anchor if a plane or an oriented point was hit.
-                    if ((trackable instanceof Plane
-                            && ((Plane) trackable).isPoseInPolygon(hit.getHitPose())
-                            && (PlaneRenderer.calculateDistanceToPlane(hit.getHitPose(), camera.getPose())
-                            > 0))
-                            || (trackable instanceof Point
-                            && ((Point) trackable).getOrientationMode()
-                            == OrientationMode.ESTIMATED_SURFACE_NORMAL)) {
-                        // Hits are sorted by depth. Consider only closest hit on a plane or oriented point.
-                        // Cap the number of objects created. This avoids overloading both the
-                        // rendering system and ARCore.
-                        if (anchors.size() >= 20) {
-                            anchors.get(0).detach();
-                            anchors.remove(0);
-                        }
-                        // Adding an Anchor tells ARCore that it should track this position in
-                        // space. This anchor is created on the Plane to place the 3D model
-                        // in the correct position relative both to the world and to the plane.
-                        anchors.add(hit.createAnchor());
-                        break;
-                    }
-                }
-            }
 
             // Draw background.
             backgroundRenderer.draw(frame);
@@ -338,75 +306,56 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
             final float[] colorCorrectionRgba = new float[4];
             frame.getLightEstimate().getColorCorrection(colorCorrectionRgba, 0);
 
-            // Visualize tracked points.
-            PointCloud pointCloud = frame.acquirePointCloud();
-            pointCloudRenderer.update(pointCloud);
-            pointCloudRenderer.draw(viewmtx, projmtx);
+            // Visualize anchors created by augmented image
 
-            // Application is responsible for releasing the point cloud resources after
-            // using it.
-            pointCloud.release();
-
-            // Check if we detected at least one plane. If so, hide the loading message.
-            if (messageSnackbarHelper.isShowing()) {
-                for (Plane plane : session.getAllTrackables(Plane.class)) {
-                    if (plane.getType() == com.google.ar.core.Plane.Type.HORIZONTAL_UPWARD_FACING
-                            && plane.getTrackingState() == TrackingState.TRACKING) {
-                        messageSnackbarHelper.hide(this);
-                        break;
-                    }
-                }
-            }
-
-            // Visualize planes.
-            planeRenderer.drawPlanes(
-                    session.getAllTrackables(Plane.class), camera.getDisplayOrientedPose(), projmtx);
-
-            // Visualize anchors created by touch.
-            for (Anchor anchor : anchors) {
+            for (String key : anchorMap.keySet()) {
+                Anchor anchor = anchorMap.get(key).first;
+                AugmentedImage augmentedImage = anchorMap.get(key).second;
                 if (anchor.getTrackingState() != TrackingState.TRACKING) {
                     continue;
                 }
-                // Get the current pose of an Anchor in world space. The Anchor pose is updated
-                // during calls to session.update() as ARCore refines its estimate of the world.
+
                 anchor.getPose().toMatrix(anchorMatrix, 0);
 
-                // Draw animation
                 if (!movieClipRenderer.isStarted()) {
-                    movieClipRenderer.play("animation.mp4", this);
+                    try {
+                        movieClipRenderer.play(key , this);
+                    } catch (FileNotFoundException e) {
+                        Log.i(TAG, "file not found: " + e.toString());
+                    }
+                }
+
+                Log.i(TAG, "key = "  + key + ", file = " + movieClipRenderer.fileName);
+
+                if (!key.equals(movieClipRenderer.fileName)) {
+                    continue;
                 }
                 float scaleFactor = 0.1f;
                 movieClipRenderer.update(anchorMatrix, scaleFactor, anchor.getPose());
                 movieClipRenderer.draw(anchor.getPose(), viewmtx, projmtx);
             }
 
-            autoGenClip(frame, projmtx, viewmtx);
+            // Create anchors and image
+            Collection<AugmentedImage> updatedAugmentedImages = frame.getUpdatedTrackables(AugmentedImage.class);
+
+            for (AugmentedImage augmentedImage : updatedAugmentedImages) {
+                switch (augmentedImage.getTrackingState()) {
+                    case TRACKING:
+                        this.runOnUiThread(() -> {
+                            Toast.makeText(this, "detected image", Toast.LENGTH_SHORT).show();
+                            fitToScanView.setVisibility(View.GONE);
+                        });
+                        Anchor centerAnchor = augmentedImage.createAnchor(augmentedImage.getCenterPose());
+                        centerAnchor.getPose().toMatrix(anchorMatrix, 0);
+                        if (!anchorMap.containsKey(augmentedImage.getName())) {
+                            anchorMap.put(augmentedImage.getName(), Pair.create(centerAnchor, augmentedImage));
+                        }
+                }
+            }
 
         } catch (Throwable t) {
             // Avoid crashing the application due to unhandled exceptions.
             Log.e(TAG, "Exception on the OpenGL thread", t);
-        }
-    }
-
-    boolean isCreated = false;
-
-    private void autoGenClip(Frame frame, float[] projmtx, float[] viewmtx) {
-        Collection<AugmentedImage> updatedAugmentedImages = frame.getUpdatedTrackables(AugmentedImage.class);
-
-        for (AugmentedImage augmentedImage : updatedAugmentedImages) {
-            switch (augmentedImage.getTrackingState()) {
-                case TRACKING:
-                    this.runOnUiThread(() -> {
-                        Toast.makeText(this, "detected image", Toast.LENGTH_SHORT).show();
-                        fitToScanView.setVisibility(View.GONE);
-                    });
-                    if (!isCreated) {
-                        Anchor centerAnchor = augmentedImage.createAnchor(augmentedImage.getCenterPose());
-                        centerAnchor.getPose().toMatrix(anchorMatrix, 0);
-                        anchors.add(centerAnchor);
-                        isCreated = true;
-                    }
-            }
         }
     }
 }

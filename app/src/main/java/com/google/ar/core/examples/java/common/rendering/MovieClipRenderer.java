@@ -3,6 +3,8 @@ package com.google.ar.core.examples.java.common.rendering;
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.SurfaceTexture;
 import android.media.MediaPlayer;
 import android.media.PlaybackParams;
@@ -14,7 +16,10 @@ import android.os.Looper;
 import android.util.Log;
 import android.view.Surface;
 
+import com.google.ar.core.AugmentedImageDatabase;
+import com.google.ar.core.Config;
 import com.google.ar.core.Pose;
+import com.google.ar.core.examples.java.helloar.HelloArActivity;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -258,9 +263,12 @@ public class MovieClipRenderer implements
         }
     }
 
+    public String fileName = "";
+
     public boolean play(final String filename, Context context)
             throws FileNotFoundException {
         // Wait for the player to be created.
+        this.fileName = filename;
         if (player == null) {
             synchronized (lock) {
                 while (player == null) {
@@ -309,7 +317,7 @@ public class MovieClipRenderer implements
 
         try {
             AssetManager assets = context.getAssets();
-            AssetFileDescriptor descriptor = assets.openFd(filename);
+            AssetFileDescriptor descriptor = assets.openFd(filename + ".mp4");
             player.setDataSource(descriptor.getFileDescriptor(),
                     descriptor.getStartOffset(),
                     descriptor.getLength());
