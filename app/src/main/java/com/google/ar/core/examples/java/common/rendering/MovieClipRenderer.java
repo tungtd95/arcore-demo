@@ -38,10 +38,10 @@ public class MovieClipRenderer implements
     private static final int TEXCOORDS_PER_VERTEX = 2;
     private static final int FLOAT_SIZE = 4;
     private static final float[] QUAD_COORDS = new float[]{
-            -1.0f, -1.0f, 0.0f,
-            -1.0f, +1.0f, 0.0f,
-            +1.0f, -1.0f, 0.0f,
-            +1.0f, +1.0f, 0.0f,
+            -0.8f, -0.3f, 0.0f,
+            -0.8f, +0.3f, 0.0f,
+            +0.8f, -0.3f, 0.0f,
+            +0.8f, +0.3f, 0.0f,
     };
 
     private static final float[] QUAD_TEXCOORDS = new float[]{
